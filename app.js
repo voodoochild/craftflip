@@ -85,6 +85,7 @@ getRecipes = function () {
     _.forEach(results.hits.hits, function (recipe) {
       recipe._source.output_item_name = names[recipe._source.output_item_id] || '<no name>';
       if (recipe._source.output_item_name.match(/\+\d+ Agony Infusion/)) { return; }
+      if (recipe._source.output_item_name.match(/\d+ Slot/)) { return; }
       recipes[recipe._id] = recipe._source;
     });
     deferred.resolve();
@@ -146,14 +147,17 @@ traverseRecipe = function (recipe) {
           p2.then(function () {
             if (prices[ingredient.item_id]) {
               if (prices[ingredient.item_id].hasOwnProperty('craft')) {
+                // component, already calculated
                 sum += prices[ingredient.item_id].craft * ingredient.count;
               } else {
+                // component, not seen before
                 sum += prices[ingredient.item_id].sell * ingredient.count;
               }
             }
           });
         } else {
           if (prices[ingredient.item_id]) {
+            // raw ingredient, add to sum for parent recipe
             sum += prices[ingredient.item_id].sell * ingredient.count;
           }
         }
@@ -181,22 +185,23 @@ showPrices = function (recipe) {
   var recipePrices = prices[recipe.output_item_id];
   if (!recipe.unavailable && recipePrices.buy && recipePrices.sell && recipePrices.craft) {
     var spreadBuy = recipePrices.buy - ((recipePrices.craft * recipe.output_item_count) * 1.15);
-    if (spreadBuy > 100) {
+    // if (spreadBuy > 1000) {
       var line = '\n'+ '-'.repeat(60) +'\n';
       process.stdout.write('\n+'+ rounded(spreadBuy/100) +' spread --- '+ recipe.output_item_name +
         ' (buy order for item at '+ rounded(recipePrices.buy/100) +')'+ line);
       renderRecipe(recipe);
       process.stdout.write(line);
-    }
+    // }
   }
 };
 
-renderRecipe = function (recipe, level) {
+renderRecipe = function (recipe, count, level) {
+  count = count || 1;
   level = level || 0;
   level && process.stdout.write('\n');
-  process.stdout.write('\t'.repeat(level));
+  process.stdout.write('\t\t'.repeat(level));
 
-  var name = recipe.output_item_name || '???';
+  var name = recipe.output_item_name || names[recipe.output_item_id] || '#'+ recipe.output_item_id;
   var pricing = prices[recipe.output_item_id];
   var from = '???';
   var each = '???';
@@ -206,12 +211,13 @@ renderRecipe = function (recipe, level) {
       from = 'craft';
       each = rounded(pricing.craft/100);
     } else {
+      from = 'buy';
       each = rounded(pricing.sell/100);
     }
   }
 
-  process.stdout.write(name +' x '+ recipe.output_item_count +' ('+ from +' for '+ each +' each)');
-  if (recipe.ingredients.length) {
+  process.stdout.write(name +' x '+ count +' ('+ from +' for '+ each +' each)');
+  if (recipe.ingredients && recipe.ingredients.length) {
     level++;
     _.forEach(recipe.ingredients, function (ingredient) {
       var ingredientRecipe = false;
@@ -221,13 +227,10 @@ renderRecipe = function (recipe, level) {
       }
       if (!ingredientRecipe) {
         ingredientRecipe = {
-          output_item_id: ingredient.item_id,
-          output_item_count: ingredient.count,
-          output_item_name: names[ingredient.item_id],
-          ingredients: []
+          output_item_id: ingredient.item_id
         };
       }
-      renderRecipe(ingredientRecipe, level);
+      renderRecipe(ingredientRecipe, ingredient.count, level);
     });
   }
 };
@@ -236,12 +239,21 @@ getNames()
 .then(getPrices)
 .then(getRecipes)
 .then(function () {
-  getRecipeForItem(14886).then(function (recipe) {
+  getRecipeForItem(38144).then(function (recipe) {
     traverseRecipe(recipe).then(showPrices);
   });
   // _.forEach(_.sample(recipes, parseInt(_.size(recipes)/100, 10)), function (recipe) {
+  // var i = 0;
   // _.forEach(recipes, function (recipe) {
   //   traverseRecipe(recipe)
-  //     .then(showPrices);
+  //     .then(function (recipe) {
+  //       showPrices(recipe);
+  //       console.log(i++);
+  //     });
   // });
 });
+
+// TODO:
+
+// - fix crafting price roll-up
+// - die out of recipes with 'broken' items
