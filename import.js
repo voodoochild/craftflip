@@ -102,10 +102,8 @@ getItemDetails = function (itemId) {
 checkIsSuitable = function (recipe) {
   var deferred = q.defer();
   var redFlags = [
-    recipe.output_item.name.match(/\+\d+ Agony Infusion/),
     recipe.output_item.rarity === 'Ascended',
     recipe.output_item.rarity === 'Legendary',
-    recipe.output_item.rarity === 'Junk',
     recipe.min_rating > 400,
     recipe.output_item.type === 'Bag',
     _.indexOf(recipe.output_item.flags, 'AccountBound') > -1,
@@ -123,15 +121,11 @@ checkIsSuitable = function (recipe) {
  * Index a recipe in elasticsearch.
  */
 indexRecipe = function (recipe) {
-  client.index({
+  return client.index({
     index: 'gw2',
     type: 'recipe',
     id: recipe.recipe_id,
     body: recipe
-  }).then(function () {
-    console.log('SUCCESS '+ recipe.output_item.name);
-  }).catch(function () {
-    console.log('ERROR '+ recipe.output_item.name);
   });
 };
 
@@ -145,7 +139,7 @@ getRecipeIds()
 
     // 3. Loop through recipe ids
     .then(function (recipeIds) {
-      _.forEach(recipeIds.slice(0, 1), function (recipeId) {
+      _.forEach(recipeIds, function (recipeId) {
 
         // 4. Get details for a specific recipe
         getRecipeDetails(recipeId).then(function (recipe) {
@@ -170,7 +164,14 @@ getRecipeIds()
               checkIsSuitable(recipe)
 
                 // 8. Index recipe in elasticsearch
-                .then(indexRecipe);
+                .then(indexRecipe)
+
+                  // 9. Done!
+                  .then(function () {
+                    console.log('SUCCESS '+ recipe.output_item.name);
+                  }).catch(function (error) {
+                    console.log('ERROR '+ recipe.output_item.name, error);
+                  });
             });
         });
       });
