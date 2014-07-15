@@ -1,0 +1,52 @@
+Traversing Cleric's Rascal Pants
+--Cleric's Embroidered Linen Insignia
+Traversing Cleric's Embroidered Linen Insignia
+--Bolt of Linen
+Traversing Bolt of Linen
+--Linen Scrap
+Buy Linen Scrap for 560, it isn't craftable
+Buy Bolt of Linen for 1115, crafting costs 1120
+--Spool of Linen Thread
+Buy Spool of Linen Thread for 38, it isn't craftable
+--Engraved Totem
+Buy Engraved Totem for 371, it isn't craftable
+Buy Cleric's Embroidered Linen Insignia for 3989, crafting costs 4273
+--Rugged Trouser Padding
+Traversing Rugged Trouser Padding
+--Bolt of Linen
+Traversing Bolt of Linen
+--Spool of Linen Thread
+Buy Spool of Linen Thread for 38, it isn't craftable
+Craft Rugged Trouser Padding for 1191.00
+--Rugged Trouser Panel
+Traversing Rugged Trouser Panel
+--Cured Rugged Leather Square
+Traversing Cured Rugged Leather Square
+--Rugged Leather Section
+Buy Rugged Leather Section for 208, it isn't craftable
+Craft Cured Rugged Leather Square for 416.00
+--Spool of Linen Thread
+Buy Spool of Linen Thread for 38, it isn't craftable
+Craft Rugged Trouser Panel for 1702.00
+Buy Cleric's Rascal Pants for 1982, crafting costs 6882
+********************
+Traversing Assassin's Darksteel Imbued Inscription
+--Darksteel Plated Dowel
+Traversing Darksteel Plated Dowel
+--Hard Wood Plank
+Traversing Hard Wood Plank
+--Hard Wood Log
+Buy Hard Wood Log for 114, it isn't craftable
+Craft Hard Wood Plank for 342.00
+--Darksteel Ingot
+Traversing Darksteel Ingot
+--Lump of Primordium
+Buy Lump of Primordium for 57, it isn't craftable
+--Platinum Ore
+Buy Platinum Ore for 166, it isn't craftable
+Craft Darksteel Ingot for 389.00
+Buy Darksteel Plated Dowel for 186, crafting costs 1851
+--Sharp Claw
+Buy Sharp Claw for 339, it isn't craftable
+Craft Assassin's Darksteel Imbued Inscription for 5457.00
+********************

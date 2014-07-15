@@ -4,13 +4,16 @@ var request = require('request');
 var elasticsearch = require('elasticsearch');
 var client = new elasticsearch.Client();
 
-var names = {};
+// Local caches of recipes and pricing data.
 var recipes = {};
 var prices = {};
-var ingredientRecipeIds = {};
 
-var getNames, getPrices, getRecipes, getRecipeForItem, traverseRecipe, showPrices, renderRecipe, rounded;
+// Methods.
+var getPrices, getRecipes, traverseRecipe, rounded;
 
+/**
+ * Repeat a string {count} times.
+ */
 String.prototype.repeat = function (count) {
   if (count < 1) { return ''; }
   var result = '', pattern = this.valueOf();
@@ -21,25 +24,17 @@ String.prototype.repeat = function (count) {
   return result + pattern;
 };
 
+/**
+ * Round a float to two decimal places.
+ */
 rounded = function (num) {
   var sign = num >= 0 ? 1 : -1;
   return (Math.round((num * Math.pow(10, 2)) + (sign  *0.001)) / Math.pow(10, 2)).toFixed(2);
 };
 
-getNames = function () {
-  var deferred = q.defer();
-  request({
-      url: 'http://api.gw2tp.com/1/bulk/items-names.json',
-      json: true
-  }, function (error, response, body) {
-    _.forEach(body.items, function (item) {
-      names[item[0]] = item[1];
-    });
-    deferred.resolve();
-  });
-  return deferred.promise;
-};
-
+/**
+ * Retrieve all pricing data from gw2tp.com.
+ */
 getPrices = function () {
   var deferred = q.defer();
   request({
@@ -55,205 +50,101 @@ getPrices = function () {
   return deferred.promise;
 };
 
+/**
+ * Retrieve all indexed recipes.
+ */
 getRecipes = function () {
   var deferred = q.defer();
   client.search({
     index: 'gw2',
     type: 'recipe',
-    size: 9000,
-    body: {
-      filter: {
-        bool: {
-          must: {
-            range: {
-              min_rating: {
-                lte: '400'
-              }
-            }
-          },
-          must_not: {
-            query: {
-              match: {
-                flags: 'LearnedFromItem'
-              }
-            }
-          }
-        }
-      }
-    }
+    size: 9000
   }).then(function (results) {
-    _.forEach(results.hits.hits, function (recipe) {
-      recipe._source.output_item_name = names[recipe._source.output_item_id] || '<no name>';
-      if (recipe._source.output_item_name.match(/\+\d+ Agony Infusion/)) { return; }
-      if (recipe._source.output_item_name.match(/\d+ Slot/)) { return; }
-      recipes[recipe._id] = recipe._source;
-    });
+    _.forEach(results.hits.hits, function (hit) { recipes[hit._id] = hit._source; });
+    client.close();
     deferred.resolve();
   });
   return deferred.promise;
 };
 
-getRecipeForItem = function (item_id) {
-  var deferred = q.defer();
-  if (ingredientRecipeIds.hasOwnProperty(item_id)) {
-    deferred.resolve(recipes[ingredientRecipeIds[item_id]]);
-  } else {
-    client.search({
-      index: 'gw2',
-      type: 'recipe',
-      size: 1,
-      body: {
-        query: {
-          match: {
-            output_item_id: item_id
-          }
-        }
-      }
-    }).then(function (results) {
-      if (results.hits.total) {
-        deferred.resolve(recipes[results.hits.hits[0]._id]);
-      } else {
-        deferred.resolve(false);
-      }
-    });
-  }
-  return deferred.promise;
-};
-
+/**
+ * Traverse a recipe, calculating crafting prices.
+ */
 traverseRecipe = function (recipe) {
-  var deferred = q.defer();
+  console.log('Traversing '+ recipe.output_item.name);
+  if (!recipe || recipe.output_item.hasOwnProperty('acquisition')) { return; }
 
-  if (!prices[recipe.output_item_id]) {
-    prices[recipe.output_item_id] = { buy: 0, sell: 0 };
-    recipe.unavailable = true;
-  } else if (prices[recipe.output_item_id].hasOwnProperty('craft')) {
-    deferred.resolve(recipe);
-    return deferred;
-  }
+  recipe.output_item.prices = prices[recipe.output_item_id] || {};
 
   if (recipe.ingredients.length) {
-    var getRecipePromises = [];
-    var traversePromises = [];
-    var sum = 0;
-
+    var craftedTotal = 0;
     _.forEach(recipe.ingredients, function (ingredient) {
-      var p1 = getRecipeForItem(ingredient.item_id);
-      getRecipePromises.push(p1);
-      p1.then(function (ingredientRecipe) {
-        if (ingredientRecipe) {
-          ingredientRecipeIds[ingredient.item_id] = ingredientRecipe.recipe_id;
-          var p2 = traverseRecipe(ingredientRecipe);
-          traversePromises.push(p2);
-          p2.then(function () {
-            if (prices[ingredient.item_id]) {
-              if (prices[ingredient.item_id].hasOwnProperty('craft')) {
-                // component, already calculated
-                sum += prices[ingredient.item_id].craft * ingredient.count;
-              } else {
-                // component, not seen before
-                sum += prices[ingredient.item_id].sell * ingredient.count;
-              }
-            }
-          });
-        } else {
-          if (prices[ingredient.item_id]) {
-            // raw ingredient, add to sum for parent recipe
-            sum += prices[ingredient.item_id].sell * ingredient.count;
-          }
-        }
-      });
+      console.log('--'+ ingredient.item.name);
+      // Traverse ingredients with recipes, or assign prices to raw ingredients
+      if (ingredient.recipe_id && recipes[ingredient.recipe_id]) {
+        var ingredientRecipe = recipes[ingredient.recipe_id];
+        traverseRecipe(ingredientRecipe);
+        ingredient.item.prices = ingredientRecipe.output_item.prices;
+      } else {
+        ingredient.item.prices = prices[ingredient.item_id] || {};
+        ingredient.item.acquisition = 'buy';
+        console.log('Buy '+ ingredient.item.name +' for '+ ingredient.item.prices.sell +', it isn\'t craftable');
+      }
+
+      // console.log(ingredient.item.name, ingredient.item.prices);
+
+      // Add crafted or sell price to the craftedTotal
+      if (ingredient.item.prices.crafted) {
+        craftedTotal += ingredient.item.prices.crafted * ingredient.count;
+      } else {
+        craftedTotal += (ingredient.item.prices.sell || 0) * ingredient.count;
+      }
     });
 
-    q.all(getRecipePromises)
-      .then(function () {
-        q.all(traversePromises)
-          .then(function () {
-            if (prices[recipe.output_item_id]) {
-              prices[recipe.output_item_id].craft = sum;
-            }
-            deferred.resolve(recipe);
-          });
-      });
-  } else {
-    deferred.resolve(recipe);
-  }
-
-  return deferred.promise;
-};
-
-showPrices = function (recipe) {
-  var recipePrices = prices[recipe.output_item_id];
-  if (!recipe.unavailable && recipePrices.buy && recipePrices.sell && recipePrices.craft) {
-    var spreadBuy = recipePrices.buy - ((recipePrices.craft * recipe.output_item_count) * 1.15);
-    // if (spreadBuy > 1000) {
-      var line = '\n'+ '-'.repeat(60) +'\n';
-      process.stdout.write('\n+'+ rounded(spreadBuy/100) +' spread --- '+ recipe.output_item_name +
-        ' (buy order for item at '+ rounded(recipePrices.buy/100) +')'+ line);
-      renderRecipe(recipe);
-      process.stdout.write(line);
-    // }
-  }
-};
-
-renderRecipe = function (recipe, count, level) {
-  count = count || 1;
-  level = level || 0;
-  level && process.stdout.write('\n');
-  process.stdout.write('\t\t'.repeat(level));
-
-  var name = recipe.output_item_name || names[recipe.output_item_id] || '#'+ recipe.output_item_id;
-  var pricing = prices[recipe.output_item_id];
-  var from = '???';
-  var each = '???';
-
-  if (pricing && pricing.sell) {
-    if (pricing.craft && pricing.craft < pricing.sell) {
-      from = 'craft';
-      each = rounded(pricing.craft/100);
+    // Compare the combined price of the ingredients with the sell price
+    if (craftedTotal < (recipe.output_item.prices.sell || 0)) {
+      recipe.output_item.prices.crafted = rounded(craftedTotal);
+      recipe.output_item.acquisition = 'craft';
+      console.log('Craft '+ recipe.output_item.name +' for '+ recipe.output_item.prices.crafted);
     } else {
-      from = 'buy';
-      each = rounded(pricing.sell/100);
+      recipe.output_item.acquisition = 'buy';
+      console.log('Buy '+ recipe.output_item.name +' for '+ recipe.output_item.prices.sell +', crafting costs '+ craftedTotal);
     }
-  }
-
-  process.stdout.write(name +' x '+ count +' ('+ from +' for '+ each +' each)');
-  if (recipe.ingredients && recipe.ingredients.length) {
-    level++;
-    _.forEach(recipe.ingredients, function (ingredient) {
-      var ingredientRecipe = false;
-      ingredient.recipe_id = ingredientRecipeIds[ingredient.item_id];
-      if (ingredient.recipe_id) {
-        ingredientRecipe = recipes[ingredient.recipe_id];
-      }
-      if (!ingredientRecipe) {
-        ingredientRecipe = {
-          output_item_id: ingredient.item_id
-        };
-      }
-      renderRecipe(ingredientRecipe, ingredient.count, level);
-    });
+  } else {
+    // No ingredients, so buying is the only option
+    recipe.output_item.acquisition = 'buy';
+    console.log('Buy '+ recipe.output_item.name +' for '+ recipe.output_item.prices.sell +', no ingredients');
   }
 };
 
-getNames()
-.then(getPrices)
-.then(getRecipes)
-.then(function () {
-  getRecipeForItem(38144).then(function (recipe) {
-    traverseRecipe(recipe).then(showPrices);
-  });
-  // _.forEach(_.sample(recipes, parseInt(_.size(recipes)/100, 10)), function (recipe) {
-  // var i = 0;
-  // _.forEach(recipes, function (recipe) {
-  //   traverseRecipe(recipe)
-  //     .then(function (recipe) {
-  //       showPrices(recipe);
-  //       console.log(i++);
-  //     });
-  // });
-});
+//=========================================================================//
 
-// TODO:
+// 1. Get all indexed recipes
+getRecipes()
 
-// - fix crafting price roll-up
-// - die out of recipes with 'broken' items
+  // 2. Get pricing data
+  .then(getPrices)
+
+    // 3. Loop through recipes
+    .then(function () {
+      // _.forEach([recipes['1223']], function (recipe) {
+      _.forEach(_.sample(recipes, 2), function (recipe) {
+
+        // 4. Traverse the top–level recipe
+        traverseRecipe(recipe);
+        console.log('\n', '*'.repeat(20), '\n');
+        // console.log(
+        //   recipe.output_item.acquisition, recipe.output_item.name, 'for',
+        //   (recipe.output_item.acquisition === 'crafted') ?
+        //     rounded(recipe.output_item.prices.crafted/100)+'s' : rounded(recipe.output_item.prices.sell/100)+'s'
+        // );
+      });
+    });
+
+//=========================================================================//
+
+/*
+TODO:
+  - hard–code list of prices for vendor items
+  - handle items with no pricing data: what should happen?
+ */
