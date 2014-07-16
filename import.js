@@ -43,6 +43,10 @@ filterIndexedRecipes = function (recipes) {
     recipes = _.difference(recipes, indexedRecipes);
     console.info(recipes.length ? 'Indexing '+ recipes.length +' recipes' : 'All recipes already indexed');
     deferred.resolve(recipes);
+  })
+  .catch(function () {
+    // Index hasn't been created yet
+    deferred.resolve(recipes);
   });
   return deferred.promise;
 };
