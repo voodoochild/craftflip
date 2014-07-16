@@ -296,3 +296,53 @@ renderRecipe = function (recipe, count, level) {
     });
   }
 };
+
+
+
+
+traverseRecipe = function (recipe) {
+  // console.log('Traversing '+ recipe.output_item.name);
+  if (!recipe || recipe.output_item.hasOwnProperty('acquisition')) { return; }
+
+  recipe.output_item.prices = prices[recipe.output_item_id] || {};
+
+  if (recipe.ingredients.length) {
+    var craftedTotal = 0;
+    _.forEach(recipe.ingredients, function (ingredient) {
+      // console.log('--'+ ingredient.item.name);
+      // Traverse ingredients with recipes, or assign prices to raw ingredients
+      if (ingredient.recipe_id && recipes[ingredient.recipe_id]) {
+        var ingredientRecipe = recipes[ingredient.recipe_id];
+        traverseRecipe(ingredientRecipe);
+        ingredient.item.prices = ingredientRecipe.output_item.prices;
+      } else {
+        ingredient.item.prices = prices[ingredient.item_id] || {};
+        ingredient.item.acquisition = 'buy';
+        // console.log('Buy '+ ingredient.item.name +' for '+ ingredient.item.prices.sell +', it isn\'t craftable');
+      }
+
+      // console.log(ingredient.item.name, ingredient.item.prices);
+
+      // Add crafted or sell price to the craftedTotal
+      if (ingredient.item.prices.crafted) {
+        craftedTotal += ingredient.item.prices.crafted * ingredient.count;
+      } else {
+        craftedTotal += (ingredient.item.prices.sell || 0) * ingredient.count;
+      }
+    });
+
+    // Compare the combined price of the ingredients with the sell price
+    if (craftedTotal < (recipe.output_item.prices.sell || 0)) {
+      recipe.output_item.prices.crafted = rounded(craftedTotal);
+      recipe.output_item.acquisition = 'craft';
+      // console.log('Craft '+ recipe.output_item.name +' for '+ recipe.output_item.prices.crafted);
+    } else {
+      recipe.output_item.acquisition = 'buy';
+      // console.log('Buy '+ recipe.output_item.name +' for '+ recipe.output_item.prices.sell +', crafting costs '+ craftedTotal);
+    }
+  } else {
+    // No ingredients, so buying is the only option
+    recipe.output_item.acquisition = 'buy';
+    // console.log('Buy '+ recipe.output_item.name +' for '+ recipe.output_item.prices.sell +', no ingredients');
+  }
+};

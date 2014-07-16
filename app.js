@@ -9,7 +9,11 @@ var recipes = {};
 var prices = {};
 
 // Methods.
-var getPrices, getRecipes, traverseRecipe, rounded;
+var getPrices, getRecipes, traverseRecipe, checkProfitable, rounded;
+
+// Constants.
+var LISTING_FEE = 0.95;
+var SALES_TAX = 0.9;
 
 /**
  * Repeat a string {count} times.
@@ -22,6 +26,13 @@ String.prototype.repeat = function (count) {
     count >>= 1, pattern += pattern;
   }
   return result + pattern;
+};
+
+/**
+ * Capitalize the first character of a string.
+ */
+String.prototype.capitalize = function() {
+  return this.charAt(0).toUpperCase() + this.slice(1);
 };
 
 /**
@@ -71,7 +82,6 @@ getRecipes = function () {
  * Traverse a recipe, calculating crafting prices.
  */
 traverseRecipe = function (recipe) {
-  console.log('Traversing '+ recipe.output_item.name);
   if (!recipe || recipe.output_item.hasOwnProperty('acquisition')) { return; }
 
   recipe.output_item.prices = prices[recipe.output_item_id] || {};
@@ -79,7 +89,6 @@ traverseRecipe = function (recipe) {
   if (recipe.ingredients.length) {
     var craftedTotal = 0;
     _.forEach(recipe.ingredients, function (ingredient) {
-      console.log('--'+ ingredient.item.name);
       // Traverse ingredients with recipes, or assign prices to raw ingredients
       if (ingredient.recipe_id && recipes[ingredient.recipe_id]) {
         var ingredientRecipe = recipes[ingredient.recipe_id];
@@ -88,10 +97,7 @@ traverseRecipe = function (recipe) {
       } else {
         ingredient.item.prices = prices[ingredient.item_id] || {};
         ingredient.item.acquisition = 'buy';
-        console.log('Buy '+ ingredient.item.name +' for '+ ingredient.item.prices.sell +', it isn\'t craftable');
       }
-
-      // console.log(ingredient.item.name, ingredient.item.prices);
 
       // Add crafted or sell price to the craftedTotal
       if (ingredient.item.prices.crafted) {
@@ -102,19 +108,47 @@ traverseRecipe = function (recipe) {
     });
 
     // Compare the combined price of the ingredients with the sell price
+    craftedTotal = craftedTotal / recipe.output_item_count; // TODO: is this logic sound?
     if (craftedTotal < (recipe.output_item.prices.sell || 0)) {
-      recipe.output_item.prices.crafted = rounded(craftedTotal);
+      recipe.output_item.prices.crafted = craftedTotal;
       recipe.output_item.acquisition = 'craft';
-      console.log('Craft '+ recipe.output_item.name +' for '+ recipe.output_item.prices.crafted);
     } else {
       recipe.output_item.acquisition = 'buy';
-      console.log('Buy '+ recipe.output_item.name +' for '+ recipe.output_item.prices.sell +', crafting costs '+ craftedTotal);
     }
   } else {
     // No ingredients, so buying is the only option
     recipe.output_item.acquisition = 'buy';
-    console.log('Buy '+ recipe.output_item.name +' for '+ recipe.output_item.prices.sell +', no ingredients');
   }
+};
+
+/**
+ * Check to see if a traversed recipe is profitable when crafted vs. highest buy order.
+ */
+checkProfitable = function (recipe) {
+  var itemName = recipe.output_item.name;
+  var acquiredBy = recipe.output_item.acquisition;
+  if (!acquiredBy) {
+    console.log(itemName, 'not traversed');
+    return;
+  }
+  var prices = recipe.output_item.prices;
+  var craftedPrice = prices && prices.crafted;
+  var sellPrice = prices && prices.sell;
+  var acquiredPrice = acquiredBy === 'crafted' ? craftedPrice : sellPrice;
+  var spread = (prices.buy * SALES_TAX) - (prices.buy - (prices.buy * LISTING_FEE)) - acquiredPrice;
+
+  // console.log('-'.repeat(10));
+  // console.log(acquiredBy.capitalize(), itemName, 'for', rounded(acquiredPrice / 100) +'s');
+  // console.log('Buy order is', rounded(prices.buy / 100) +'s');
+  // console.log('Spread is', rounded(spread / 100) +'s');
+  // console.log('-'.repeat(10), '\n');
+
+  if (spread > 100) {
+    console.log(itemName, rounded(spread/100));
+  }
+  //  else {
+  //   console.log(itemName, 'no profit');
+  // }
 };
 
 //=========================================================================//
@@ -128,16 +162,13 @@ getRecipes()
     // 3. Loop through recipes
     .then(function () {
       // _.forEach([recipes['1223']], function (recipe) {
-      _.forEach(_.sample(recipes, 2), function (recipe) {
+      _.forEach(_.sample(recipes, 1000), function (recipe) {
 
         // 4. Traverse the top–level recipe
         traverseRecipe(recipe);
-        console.log('\n', '*'.repeat(20), '\n');
-        // console.log(
-        //   recipe.output_item.acquisition, recipe.output_item.name, 'for',
-        //   (recipe.output_item.acquisition === 'crafted') ?
-        //     rounded(recipe.output_item.prices.crafted/100)+'s' : rounded(recipe.output_item.prices.sell/100)+'s'
-        // );
+
+        // 5. Check to see if the recipe is profitable
+        checkProfitable(recipe);
       });
     });
 
