@@ -9,7 +9,7 @@ var recipes = {};
 var prices = {};
 
 // Methods.
-var getPrices, getRecipes, traverseRecipe, checkProfitable, rounded;
+var getPrices, getRecipes, traverseRecipe, checkProfitable, renderRecipe, rounded;
 
 // Constants.
 var LISTING_FEE = 0.95;
@@ -84,8 +84,10 @@ getRecipes = function () {
 traverseRecipe = function (recipe) {
   if (!recipe || recipe.output_item.hasOwnProperty('acquisition')) { return; }
   recipe.output_item.prices = prices[recipe.output_item_id] || {};
+
   recipe.noSellPrice = false;
   recipe.hasAccountBound = false;
+  recipe.learnedFromItem = _.indexOf(recipe.flags, 'LearnedFromItem') >= 0;
 
   if (!recipe.output_item.prices.hasOwnProperty('sell') || recipe.output_item.prices.sell === 0)  {
     recipe.noSellPrice = true;
@@ -101,6 +103,7 @@ traverseRecipe = function (recipe) {
         traverseRecipe(ingredientRecipe);
         if (ingredientRecipe.noSellPrice) { recipe.noSellPrice = true; return; }
         if (ingredientRecipe.hasAccountBound) { recipe.hasAccountBound = true; }
+        if (ingredientRecipe.learnedFromItem) { recipe.learnedFromItem = true; }
         ingredient.item.prices = ingredientRecipe.output_item.prices;
       } else {
         if (_.indexOf(ingredient.item.flags, 'AccountBound') === -1) {
@@ -148,45 +151,74 @@ traverseRecipe = function (recipe) {
 checkProfitable = function (recipe) {
   var itemName = recipe.output_item.name;
   var acquiredBy = recipe.output_item.acquisition;
+  if (recipe.learnedFromItem) {
+    return false;
+  }
   if (recipe.noSellPrice) {
-    // console.log('=', recipe.recipe_id, recipe.output_item_id, itemName, 'recipe/ingredient with no sell price');
     return false;
   }
   if (recipe.hasAccountBound) {
     return false;
   }
   if (!acquiredBy) {
-    // console.log('=', recipe.output_item_id, itemName, 'not traversed');
     return false;
   }
   var prices = recipe.output_item.prices;
   if (!prices.buy) {
-    // console.log('=', recipe.output_item_id, itemName, 'no buy price', prices);
     return false;
   } else if (!prices.sell) {
-    // console.log('=', recipe.output_item_id, itemName, 'no sell price', prices);
     return false;
   } else if (acquiredBy !== 'craft') {
-    // console.log('=', recipe.output_item_id, itemName, 'crafting is more expensive', prices);
     return false;
   }
   var craftedPrice = prices && prices.crafted;
   if (!craftedPrice) {
-    // console.log('=', recipe.output_item_id, itemName, 'no crafted price', prices);
     return false;
   }
   var listingFee = prices.buy - (prices.buy * LISTING_FEE);
   var profitAfterTax = prices.buy * SALES_TAX;
   var spread = profitAfterTax - listingFee - craftedPrice;
   if (spread > 1000) {
-    console.log(acquiredBy.capitalize(), itemName, 'for', rounded(craftedPrice / 100) +'s');
-    console.log('Buy order is', rounded(prices.buy / 100) +'s');
-    console.log('Spread is', rounded(spread / 100) +'s');
-    console.log('\n');
-    return true;
+    console.log(recipe.disciplines, recipe.min_rating);
+    return spread;
   }
 
   return false;
+};
+
+/**
+ * Render a recipe to the console.
+ */
+renderRecipe = function (recipe, count, level) {
+  count = count || 1;
+  level = level || 0;
+  level && process.stdout.write('\n');
+  process.stdout.write('  '.repeat(level));
+
+  var name = recipe.output_item.name;
+  var pricing = recipe.output_item.prices;
+  var from = '???';
+  var each = '???';
+
+  if (pricing && pricing.sell) {
+    if (pricing.crafted && pricing.crafted < pricing.sell) {
+      from = 'craft';
+      each = rounded(pricing.crafted / 100);
+    } else {
+      from = 'buy';
+      each = rounded(pricing.sell / 100);
+    }
+  }
+
+  process.stdout.write(name +' x '+ count +' ('+ from +' for '+ each +' each)');
+  if (recipe.ingredients && recipe.ingredients.length) {
+    level++;
+    _.forEach(recipe.ingredients, function (ingredient) {
+      var ingredientRecipe = ingredient.recipe_id ?
+        recipes[ingredient.recipe_id] : { output_item: ingredient.item };
+      renderRecipe(ingredientRecipe, ingredient.count, level);
+    });
+  }
 };
 
 //=========================================================================//
@@ -200,15 +232,18 @@ getRecipes()
     // 3. Loop through recipes
     .then(function () {
       var profitable = 0;
-      // _.forEach([recipes['1055']], function (recipe) {
       _.forEach(recipes, function (recipe) {
-      // _.forEach(_.sample(recipes, 2000), function (recipe) {
 
         // 4. Traverse the top–level recipe
         traverseRecipe(recipe);
 
         // 5. Check to see if the recipe is profitable
-        checkProfitable(recipe) ? profitable++ : null;
+        var profit = checkProfitable(recipe);
+        if (profit) {
+          profitable++;
+          renderRecipe(recipe);
+          console.log('\n[Profit = '+ rounded(profit/100) +'s]\n');
+        }
       });
       console.log(profitable +' profitable recipes found!');
     });
