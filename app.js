@@ -4,6 +4,8 @@ var request = require('request');
 var elasticsearch = require('elasticsearch');
 var client = new elasticsearch.Client();
 
+var debug = false;
+
 // Local caches of recipes and pricing data.
 var recipes = {};
 var prices = {};
@@ -54,7 +56,7 @@ getPrices = function () {
   }, function (error, response, body) {
     _.forEach(body.items, function (item) {
       item = _.zipObject(body.columns, item);
-      prices[item.id] = { buy: item.buy, sell: item.sell };
+      prices[item.id] = item;
     });
     deferred.resolve();
   });
@@ -83,8 +85,8 @@ getRecipes = function () {
  */
 traverseRecipe = function (recipe) {
   if (!recipe || recipe.output_item.hasOwnProperty('acquisition')) { return; }
-  recipe.output_item.prices = prices[recipe.output_item_id] || {};
 
+  recipe.output_item.prices = prices[recipe.output_item_id] || {};
   recipe.noSellPrice = false;
   recipe.hasAccountBound = false;
   recipe.learnedFromItem = _.indexOf(recipe.flags, 'LearnedFromItem') >= 0;
@@ -104,6 +106,7 @@ traverseRecipe = function (recipe) {
         if (ingredientRecipe.noSellPrice) { recipe.noSellPrice = true; return; }
         if (ingredientRecipe.hasAccountBound) { recipe.hasAccountBound = true; }
         if (ingredientRecipe.learnedFromItem) { recipe.learnedFromItem = true; }
+        ingredient.recipe = ingredientRecipe;
         ingredient.item.prices = ingredientRecipe.output_item.prices;
       } else {
         if (_.indexOf(ingredient.item.flags, 'AccountBound') === -1) {
@@ -120,10 +123,12 @@ traverseRecipe = function (recipe) {
 
       // Add crafted or sell price to the craftedTotal
       if (!recipe.noSellPrice && ingredient.item.prices.sell) {
-        if (ingredient.item.prices.crafted) {
+        if (ingredient.item.prices.crafted && ingredient.item.prices.crafted < ingredient.item.prices.sell) {
           craftedTotal += ingredient.item.prices.crafted * ingredient.count;
+          ingredient.item.acquisition = 'craft';
         } else {
           craftedTotal += ingredient.item.prices.sell * ingredient.count;
+          ingredient.item.acquisition = 'buy';
         }
       }
     });
@@ -132,16 +137,13 @@ traverseRecipe = function (recipe) {
     if (!recipe.noSellPrice) {
       craftedTotal = craftedTotal / recipe.output_item_count;
       recipe.output_item.prices.crafted = craftedTotal;
-      if (craftedTotal < recipe.output_item.prices.sell) {
-        recipe.output_item.acquisition = 'craft';
-      } else {
-        recipe.output_item.acquisition = 'buy';
-      }
+      recipe.output_item.acquisition = (craftedTotal < recipe.output_item.prices.sell) ? 'craft' : 'buy';
     }
   } else {
     // No ingredients, so buying is the only option
     recipe.output_item.acquisition = 'buy';
   }
+
   return true;
 };
 
@@ -149,76 +151,27 @@ traverseRecipe = function (recipe) {
  * Check to see if a traversed recipe is profitable when crafted vs. highest buy order.
  */
 checkProfitable = function (recipe) {
-  var itemName = recipe.output_item.name;
-  var acquiredBy = recipe.output_item.acquisition;
-  if (recipe.learnedFromItem) {
-    return false;
-  }
-  if (recipe.noSellPrice) {
-    return false;
-  }
-  if (recipe.hasAccountBound) {
-    return false;
-  }
-  if (!acquiredBy) {
-    return false;
-  }
   var prices = recipe.output_item.prices;
-  if (!prices.buy) {
-    return false;
-  } else if (!prices.sell) {
-    return false;
-  } else if (acquiredBy !== 'craft') {
-    return false;
-  }
   var craftedPrice = prices && prices.crafted;
-  if (!craftedPrice) {
-    return false;
-  }
+  var acquiredBy = recipe.output_item.acquisition;
+
+  var redFlags = [
+    recipe.learnedFromItem,
+    recipe.noSellPrice,
+    recipe.hasAccountBound,
+    !acquiredBy,
+    !prices.buy,
+    !prices.sell,
+    !craftedPrice,
+    acquiredBy !== 'craft'
+  ];
+
+  if (_.compact(redFlags).length) { return false; }
+
   var listingFee = prices.buy - (prices.buy * LISTING_FEE);
   var profitAfterTax = prices.buy * SALES_TAX;
-  var spread = profitAfterTax - listingFee - craftedPrice;
-  if (spread > 1000) {
-    console.log(recipe.disciplines, recipe.min_rating);
-    return spread;
-  }
-
-  return false;
-};
-
-/**
- * Render a recipe to the console.
- */
-renderRecipe = function (recipe, count, level) {
-  count = count || 1;
-  level = level || 0;
-  level && process.stdout.write('\n');
-  process.stdout.write('  '.repeat(level));
-
-  var name = recipe.output_item.name;
-  var pricing = recipe.output_item.prices;
-  var from = '???';
-  var each = '???';
-
-  if (pricing && pricing.sell) {
-    if (pricing.crafted && pricing.crafted < pricing.sell) {
-      from = 'craft';
-      each = rounded(pricing.crafted / 100);
-    } else {
-      from = 'buy';
-      each = rounded(pricing.sell / 100);
-    }
-  }
-
-  process.stdout.write(name +' x '+ count +' ('+ from +' for '+ each +' each)');
-  if (recipe.ingredients && recipe.ingredients.length) {
-    level++;
-    _.forEach(recipe.ingredients, function (ingredient) {
-      var ingredientRecipe = ingredient.recipe_id ?
-        recipes[ingredient.recipe_id] : { output_item: ingredient.item };
-      renderRecipe(ingredientRecipe, ingredient.count, level);
-    });
-  }
+  recipe.output_item.spread = profitAfterTax - listingFee - craftedPrice;
+  return (recipe.output_item.spread > 500) ? recipe.output_item.spread : false;
 };
 
 //=========================================================================//
@@ -231,27 +184,22 @@ getRecipes()
 
     // 3. Loop through recipes
     .then(function () {
-      var profitable = 0;
+      var profitable = [];
       _.forEach(recipes, function (recipe) {
+        try {
+          // 4. Traverse the top–level recipe
+          traverseRecipe(recipe);
 
-        // 4. Traverse the top–level recipe
-        traverseRecipe(recipe);
-
-        // 5. Check to see if the recipe is profitable
-        var profit = checkProfitable(recipe);
-        if (profit) {
-          profitable++;
-          renderRecipe(recipe);
-          console.log('\n[Profit = '+ rounded(profit/100) +'s]\n');
+          // 5. Check to see if the recipe is profitable
+          if (checkProfitable(recipe)) { profitable.push(recipe); }
+        }
+        catch (e) {
+          console.log(e);
         }
       });
-      console.log(profitable +' profitable recipes found!');
+
+      // 6. Output profitable recipes as JSON
+      process.stdout.write(JSON.stringify({ recipes: profitable }));
     });
 
 //=========================================================================//
-
-/*
-TODO:
-  - hard–code list of prices for vendor items
-  - handle items with no pricing data: what should happen?
- */

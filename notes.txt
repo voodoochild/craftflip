@@ -1,3 +1,0 @@
-Make sure not to show raw ingredient as buy when 'parent' ingredient is buy
-instead of craft. Confusing. Looks like in this case we're doubling up price
-too, which is much worse.

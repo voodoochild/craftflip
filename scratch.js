@@ -346,3 +346,54 @@ traverseRecipe = function (recipe) {
     // console.log('Buy '+ recipe.output_item.name +' for '+ recipe.output_item.prices.sell +', no ingredients');
   }
 };
+
+
+
+
+
+/**
+ * Render a recipe to the console.
+ */
+renderRecipe = function (recipe, count, level) {
+  count = count || 1;
+  level = level || 0;
+  level && process.stdout.write('\n');
+
+  if (level === 0) {
+    process.stdout.write('[Craft '+ recipe.output_item.name +' for '+
+      rounded(recipe.output_item.prices.crafted / 100) +'s and meet the highest buy order of '+
+      rounded(recipe.output_item.prices.buy / 100) +'s]\n');
+  }
+
+  process.stdout.write('  '.repeat(level));
+
+  var name = recipe.output_item.name;
+  var pricing = recipe.output_item.prices;
+  var from = '???';
+  var total = '???';
+
+  if (pricing && pricing.sell) {
+    if (pricing.crafted && pricing.crafted < pricing.sell) {
+      from = 'craft';
+      total = rounded((pricing.crafted * count) / 100);
+    } else {
+      from = 'buy';
+      total = rounded((pricing.sell * count)/ 100);
+    }
+  }
+
+  if (from === 'craft') {
+    process.stdout.write('Craft '+ name +' x '+ count);
+  } else {
+    process.stdout.write('Buy '+ name +' x '+ count +' for '+ total);
+  }
+  if (recipe.ingredients && recipe.ingredients.length) {
+    level++;
+    _.forEach(recipe.ingredients, function (ingredient) {
+      if (!ingredient.recipe || ingredient.item.acquisition !== 'craft') {
+        ingredient.recipe = { output_item: ingredient.item };
+      }
+      renderRecipe(ingredient.recipe, ingredient.count, level);
+    });
+  }
+};
