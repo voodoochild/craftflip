@@ -397,3 +397,32 @@ renderRecipe = function (recipe, count, level) {
     });
   }
 };
+
+
+/**
+ * Repeat a string {count} times.
+ */
+String.prototype.repeat = function (count) {
+  if (count < 1) { return ''; }
+  var result = '', pattern = this.valueOf();
+  while (count > 1) {
+    if (count & 1) { result += pattern; }
+    count >>= 1, pattern += pattern;
+  }
+  return result + pattern;
+};
+
+/**
+ * Capitalize the first character of a string.
+ */
+String.prototype.capitalize = function() {
+  return this.charAt(0).toUpperCase() + this.slice(1);
+};
+
+/**
+ * Round a float to two decimal places.
+ */
+rounded = function (num) {
+  var sign = num >= 0 ? 1 : -1;
+  return (Math.round((num * Math.pow(10, 2)) + (sign  *0.001)) / Math.pow(10, 2)).toFixed(2);
+};
