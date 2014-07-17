@@ -20,8 +20,8 @@ var SALES_TAX = 0.9;
 /**
  * Retrieve all pricing data from gw2tp.com.
  */
-getPrices = function () {
-  var deferred = q.defer();
+getPrices = function (callback) {
+  callback = callback || _.noop();
   request({
       url: 'http://api.gw2tp.com/1/bulk/items.json',
       json: true
@@ -30,9 +30,8 @@ getPrices = function () {
       item = _.zipObject(body.columns, item);
       prices[item.id] = item;
     });
-    deferred.resolve();
+    callback();
   });
-  return deferred.promise;
 };
 
 /**
@@ -162,37 +161,38 @@ getRecipes()
     var server = app.listen(3000, function () {
       console.log('Listening on port %d', server.address().port);
     });
-  });
+  })
+
+    .done();
 
 //=========================================================================//
 
 app.get('/profits.json', function (req, res) {
   
   // Get pricing data
-  getPrices()
+  getPrices(function () {
+    var profitable = [];
 
     // Loop through recipes
-    .then(function () {
-      var profitable = [];
-      _.forEach(recipes, function (recipe) {
-        try {
-          // Traverse the top–level recipe
-          traverseRecipe(recipe);
+    _.forEach(recipes, function (recipe) {
+      try {
+        // Traverse the top–level recipe
+        traverseRecipe(recipe);
 
-          // Check to see if the recipe is profitable
-          if (checkProfitable(recipe)) { profitable.push(recipe); }
-        }
-        catch (e) {
-          console.log('caught', e);
-        }
-      });
-
-      // Output profitable recipes as JSON
-      profitable = _.sortBy(profitable, function (recipe) { return recipe.output_item.spread; }).reverse();
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.write(JSON.stringify({ recipes: profitable }));
-      res.end();
+        // Check to see if the recipe is profitable
+        if (checkProfitable(recipe)) { profitable.push(recipe); }
+      }
+      catch (e) {
+        console.log('caught', e);
+      }
     });
+
+    // Output profitable recipes as JSON
+    profitable = _.sortBy(profitable, function (recipe) { return recipe.output_item.spread; }).reverse();
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.write(JSON.stringify({ recipes: profitable }));
+    res.end();
+  });
 });
 
 //=========================================================================//
