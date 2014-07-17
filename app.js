@@ -3,6 +3,8 @@ var _ = require('lodash');
 var request = require('request');
 var elasticsearch = require('elasticsearch');
 var client = new elasticsearch.Client();
+var express = require('express');
+var app = express();
 
 // Local caches of recipes and pricing data.
 var recipes = {};
@@ -141,35 +143,56 @@ checkProfitable = function (recipe) {
   var listingFee = prices.buy - (prices.buy * LISTING_FEE);
   var profitAfterTax = prices.buy * SALES_TAX;
   recipe.output_item.spread = profitAfterTax - listingFee - craftedPrice;
-  return (recipe.output_item.spread > 500) ? recipe.output_item.spread : false;
+  return (recipe.output_item.spread > 100) ? recipe.output_item.spread : false;
 };
 
 //=========================================================================//
 
-// 1. Get all indexed recipes
+app.all('*', function (req, res, next) {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Headers', 'X-Requested-With');
+  next();
+ });
+
+// Get all indexed recipes
 getRecipes()
 
-  // 2. Get pricing data
-  .then(getPrices)
+  // Start the express server
+  .then(function () {
+    var server = app.listen(3000, function () {
+      console.log('Listening on port %d', server.address().port);
+    });
+  });
 
-    // 3. Loop through recipes
+//=========================================================================//
+
+app.get('/profits.json', function (req, res) {
+  
+  // Get pricing data
+  getPrices()
+
+    // Loop through recipes
     .then(function () {
       var profitable = [];
       _.forEach(recipes, function (recipe) {
         try {
-          // 4. Traverse the top–level recipe
+          // Traverse the top–level recipe
           traverseRecipe(recipe);
 
-          // 5. Check to see if the recipe is profitable
+          // Check to see if the recipe is profitable
           if (checkProfitable(recipe)) { profitable.push(recipe); }
         }
         catch (e) {
-          console.log(e);
+          console.log('caught', e);
         }
       });
 
-      // 6. Output profitable recipes as JSON
-      process.stdout.write(JSON.stringify({ recipes: profitable }));
+      // Output profitable recipes as JSON
+      profitable = _.sortBy(profitable, function (recipe) { return recipe.output_item.spread; }).reverse();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.write(JSON.stringify({ recipes: profitable }));
+      res.end();
     });
+});
 
 //=========================================================================//
