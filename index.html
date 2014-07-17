@@ -121,7 +121,7 @@ $.getJSON('http://localhost:3000/profits.json').then(function (data) {
     _.forEach(buy.reverse(), function (r) {
       html += '<li><a href="http://www.gw2tp.com/item/'+ r.recipe.output_item.item_id +'">'+
         r.recipe.output_item.name +'</a> x '+ r.count +
-        ' <b>'+ rounded(r.recipe.output_item.prices.sell/100) +'</b></li>';
+        ' <b>'+ rounded((r.recipe.output_item.prices.sell * r.count)/100) +'</b></li>';
     });
     html += '</ul>';
     
