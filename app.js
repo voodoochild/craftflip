@@ -127,14 +127,19 @@ checkProfitable = function (recipe) {
   var acquiredBy = recipe.output_item.acquisition;
 
   var redFlags = [
-    recipe.learnedFromItem,
+    // recipe.learnedFromItem,
     recipe.noSellPrice,
     recipe.hasAccountBound,
     !acquiredBy,
     !prices.buy,
     !prices.sell,
     !craftedPrice,
-    acquiredBy !== 'craft'
+    acquiredBy !== 'craft',
+    !prices.demand,
+    // All ingredients have supply available
+    !recipe.noSellPrice && _.compact(_.map(recipe.ingredients, function (i) {
+      return i.item.prices.supply === 0;
+    })).length
   ];
 
   if (_.compact(redFlags).length) { return false; }
@@ -150,6 +155,7 @@ checkProfitable = function (recipe) {
 app.all('*', function (req, res, next) {
   res.header('Access-Control-Allow-Origin', '*');
   res.header('Access-Control-Allow-Headers', 'X-Requested-With');
+  res.header('Cache-Control', 'no-cache');
   next();
  });
 
@@ -161,14 +167,12 @@ getRecipes()
     var server = app.listen(3000, function () {
       console.log('Listening on port %d', server.address().port);
     });
-  })
-
-    .done();
+  }).done();
 
 //=========================================================================//
 
 app.get('/profits.json', function (req, res) {
-  
+
   // Get pricing data
   getPrices(function () {
     var profitable = [];
@@ -183,7 +187,7 @@ app.get('/profits.json', function (req, res) {
         if (checkProfitable(recipe)) { profitable.push(recipe); }
       }
       catch (e) {
-        console.log('caught', e);
+        console.error(e);
       }
     });
 

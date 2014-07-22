@@ -5,138 +5,227 @@
   <meta charset="utf-8">
   <title>Craft Flip</title>
   <style>
-* {
-  box-sizing: border-box;
-}
-body {
-  color: #333;
-  font-family: menomonia;
-  font-size: 16px;
-}
-h1 {
-  font-size: 3rem;
-  margin: 20px 10px;
-}
-.recipe {
-  border: 2px solid #dedede;
-  margin: 5px 15px 20px;
-  padding: 10px;
-  width: 500px;
-}
-.recipe h1 {
-  font-size: 1.25rem;
-  margin: 0;
-}
-.profit {
-  background: #6ec962;
-  color: #fff;
-  display: inline-block;
-  float: right;
-  font-size: .9rem;
-  padding: 2px 4px;
-}
-.disciplines {
-  font-size: .75rem;
-}
-.recipe h2 {
-  font-size: 1rem;
-}
-li b {
-  font-size: .9rem;
-  float: right;
-  line-height: 1.35;
-}
-</style>
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      background: #fff;
+      color: #333;
+      font: 16px/1 pt sans, helvetica, arial, sans-serif;
+    }
+    h1 {
+      text-align: center;
+    }
+    a {
+      color: #333;
+      text-decoration: none;
+    }
+    a:hover {
+      background: #FFEB77;
+    }
+    #recipes {
+      list-style: none;
+      margin: 0 auto 50px auto;
+      padding: 0;
+      width: 500px;
+    }
+    .placeholder {
+      text-align: center;
+    }
+    .recipe {
+      border-top: 1px solid #ccc;
+      margin-bottom: 10px;
+    }
+    .recipe header {
+      cursor: pointer;
+    }
+    .recipe .icon {
+      height: 36px;
+      position: absolute;
+      left: 0;
+      width: 37px;
+    }
+    .recipe h2 {
+      font-size: 1.25rem;
+      font-weight: normal;
+      margin: 10px 0 5px 0;
+      padding-left: 44px;
+      position: relative;
+    }
+    .recipe h2 b {
+      background: #6ec962;
+      color: #fff;
+      font-size: 1rem;
+      line-height: 1.25;
+      padding: 0 5px;
+      position: absolute;
+      right: 0;
+    }
+    .recipe .discipline {
+      font-size: .75rem;
+      font-weight: bold;
+      margin: 0;
+      padding-left: 45px;
+    }
+    .recipe .summary {
+      background: #ededed;
+      display: inline-block;
+      padding: 5px;
+    }
+    .recipe .details {
+      margin-bottom: 20px;
+    }
+    .recipe.collapsed .details {
+      display: none;
+    }
+    .recipe h3 {
+      font-size: 1rem;
+      margin: 0 0 5px 5px;
+    }
+    .recipe ol {
+      font-size: .875rem;
+      list-style: none;
+      margin-top: -23px;
+      margin-bottom: 10px;
+      padding-left: 80px;
+    }
+    .recipe li {
+      line-height: 1.5;
+      position: relative;
+    }
+    .recipe .details li b {
+      background: #ededed;
+      padding: 0 5px;
+      position: absolute;
+      right: 0;
+    }
+  </style>
 </head>
 <body>
-  <h1>Craft Flip</h1>
-  <main></main>
+  <main>
+    <h1>Craft Flip</h1>
+    <ol id="recipes">
+      <li class="placeholder">Retrieving profitable crafts…</li>
+    </ol>
+  </main>
   <script src="http://cdnjs.cloudflare.com/ajax/libs/lodash.js/2.4.1/lodash.min.js"></script>
   <script src="http://code.jquery.com/jquery-2.1.0.min.js"></script>
   <script type="text/javascript">
-  /**
- * Round a float to two decimal places.
- */
-function rounded (num) {
-  var sign = num >= 0 ? 1 : -1;
-  return (Math.round((num * Math.pow(10, 2)) + (sign  *0.001)) / Math.pow(10, 2)).toFixed(2);
-}
-
-
-/**
- * Render a recipe to the console.
- * @TODO - change args to options object
- */
-function render (recipe, count, buy, craft) {
-  count = count || 1;
-
-  var name = recipe.output_item.name;
-  var prices = recipe.output_item.prices;
-
-  if (prices && prices.sell) {
-    if (prices.crafted && prices.crafted < prices.sell) {
-      craft.push({ recipe: recipe, count: count });
-    } else {
-      buy.push({ recipe: recipe, count: count });
+    function rounded (num) {
+      var sign = num >= 0 ? 1 : -1;
+      return (Math.round((num * Math.pow(10, 2)) + (sign  *0.001)) / Math.pow(10, 2)).toFixed(2);
     }
-  }
-  
-  if (recipe.ingredients && recipe.ingredients.length) {
-    _.forEach(recipe.ingredients, function (ingredient) {
-      if (!ingredient.recipe || ingredient.item.acquisition !== 'craft') {
-        ingredient.recipe = { output_item: ingredient.item };
+
+    function process (recipe, count, buy, craft) {
+      count = count || 1;
+
+      var name = recipe.output_item.name;
+      var prices = recipe.output_item.prices;
+
+      if (prices && prices.sell) {
+        if (prices.crafted && prices.crafted < prices.sell) {
+          var craftItem = _.find(craft, { id: recipe.output_item.item_id });
+          if (craftItem) {
+            craftItem.count = parseInt(count, 10) + parseInt(craftItem.count, 10);
+          } else {
+            craft.push({
+              id: recipe.output_item.item_id,
+              name: recipe.output_item.name,
+              count: count
+            });
+          }
+        } else {
+          var buyItem = _.find(buy, { id: recipe.output_item.item_id });
+          if (buyItem) {
+            buyItem.count = parseInt(count, 10) + parseInt(buyItem.count, 10);
+            buyItem.total = rounded((recipe.output_item.prices.sell * buyItem.count) / 100)
+          } else {
+            buy.push({
+              id: recipe.output_item.item_id,
+              name: recipe.output_item.name,
+              count: count,
+              each: rounded(recipe.output_item.prices.sell / 100),
+              total: rounded((recipe.output_item.prices.sell * count) / 100)
+            });
+          }
+        }
       }
-      render(ingredient.recipe, ingredient.count, buy, craft);
-    });
-  }
-}
 
+      if (recipe.ingredients && recipe.ingredients.length) {
+        _.forEach(recipe.ingredients, function (ingredient) {
+          if (!ingredient.recipe || ingredient.item.acquisition !== 'craft') {
+            ingredient.recipe = { output_item: ingredient.item };
+          }
+          process(ingredient.recipe, ingredient.count, buy, craft);
+        });
+      }
+    }
 
-/**
- * Get profitable recipes and render.
- */
-// $.getJSON('http://jsbin.com/seram/2/js').then(function (data) {
-$.getJSON('http://localhost:3000/profits.json').then(function (data) {
-  _.forEach(data.recipes, function (recipe) {
-    
-    var html = '<article class="recipe"><header>';
-    
-    html += '<h1><a href="http://www.gw2tp.com/item/'+ recipe.output_item_id +'">'+
-      recipe.output_item.name +'</a>'+
-      ' <span class="profit">'+ rounded(recipe.output_item.spread/100) +
-      '</span></h1>';
-   
-    html += '<span class="disciplines">'+ recipe.disciplines.join(', ') +
-      ' <b>'+ recipe.min_rating +'</b></span></header>';
-                  
-    html += '<p>Craft for <b>'+ rounded(recipe.output_item.prices.crafted / 100) +
-      '</b>, sell for <b>'+ rounded(recipe.output_item.prices.buy / 100) +'</b>';
-    
-    var buy = [];
-    var craft = [];
-    
-    render(recipe, 1, buy, craft);
-    
-    html += '<h2>Buy:</h2><ul>';
-    _.forEach(buy.reverse(), function (r) {
-      html += '<li><a href="http://www.gw2tp.com/item/'+ r.recipe.output_item.item_id +'">'+
-        r.recipe.output_item.name +'</a> x '+ r.count +
-        ' <b>'+ rounded((r.recipe.output_item.prices.sell * r.count)/100) +'</b></li>';
+    var recipeTpl = _.template(
+      '<li class="recipe collapsed">'+
+        '<header>'+
+          '<h2>'+
+            '<img class="icon" src="https://render.guildwars2.com/file/<%= iconSignature %>/<%= iconFileId %>.png" />'+
+            '<a href="http://www.gw2tp.com/item/<%= id %>" target="_blank"><%= name %></a> <b><%= profit %></b>'+
+          '</h2>'+
+          '<p class="discipline"><%= disciplines %> <%= minRating %></p>'+
+        '</header>'+
+        '<div class="details">'+
+          '<p class="summary">Craft for <b><%= craftPrice %></b> Sell for <b><%= sellPrice %></b></p>'+
+          '<h3>Buy:</h3>'+
+          '<ol>'+
+            '<% _.forEach(buyItems, function(item) { %>'+
+              '<li>'+
+                '<a href="http://www.gw2tp.com/item/<%- item.id %>"><%- item.name %></a> x <%- item.count %> '+
+                '<b><%- item.each %> / <%- item.total %></b>'+
+              '</li>'+
+            '<% }); %>'+
+          '</ol>'+
+          '<h3>Craft:</h3>'+
+          '<ol>'+
+            '<% _.forEach(craftItems, function(item) { %>'+
+              '<li>'+
+                '<a href="http://www.gw2tp.com/item/<%- item.id %>"><%- item.name %></a> x <%- item.count %> '+
+              '</li>'+
+            '<% }); %>'+
+          '</ol>'+
+        '</div>'+
+      '</li>'
+    );
+
+    $.getJSON('http://localhost:3000/profits.json').then(function (data) {
+      var html = '';
+      _.forEach(data.recipes, function (recipe) {
+        var buyItems = [];
+        var craftItems = [];
+
+        process(recipe, 1, buyItems, craftItems);
+
+        html += recipeTpl({
+          id: recipe.output_item_id,
+          iconSignature: recipe.output_item.icon_file_signature,
+          iconFileId: recipe.output_item.icon_file_id,
+          name: recipe.output_item.name,
+          profit: rounded(recipe.output_item.spread / 100),
+          disciplines: recipe.disciplines.join(', '),
+          minRating: recipe.min_rating,
+          craftPrice: rounded(recipe.output_item.prices.crafted / 100),
+          sellPrice: rounded(recipe.output_item.prices.buy / 100),
+          buyItems: buyItems.reverse(),
+          craftItems: craftItems.reverse()
+        });
+      });
+
+      $('#recipes').html(html);
     });
-    html += '</ul>';
-    
-    html += '<h2>Craft:</h2><ul>';
-    _.forEach(craft.reverse(), function (r) {
-      html += '<li><a href="http://www.gw2tp.com/item/'+ r.recipe.output_item.item_id +'">'+
-        r.recipe.output_item.name +'</a> x '+ r.count + '</li>';
+
+    $(function () {
+      $('#recipes').on('click', '.recipe header', function (event) {
+        if (!$(event.target).is('a')) {
+          $(this).parents('.recipe').toggleClass('collapsed');
+        }
+      });
     });
-    html += '</ul>';
-    
-    
-    html += '</article>';
-    $('main').append(html);
-  });
-});
   </script>
 </body>
 </html>
