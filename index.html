@@ -1,7 +1,6 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <link rel="stylesheet" href="https://d1h9a8s8eodvjz.cloudfront.net/fonts/menomonia/08-02-12/menomonia.css">
   <meta charset="utf-8">
   <title>Craft Flip</title>
   <style>
@@ -176,7 +175,7 @@
           '<ol>'+
             '<% _.forEach(buyItems, function(item) { %>'+
               '<li>'+
-                '<a href="http://www.gw2tp.com/item/<%- item.id %>"><%- item.name %></a> x <%- item.count %> '+
+                '<a href="http://www.gw2tp.com/item/<%- item.id %>" target="_blank"><%- item.name %></a> x <%- item.count %> '+
                 '<b><%- item.each %> / <%- item.total %></b>'+
               '</li>'+
             '<% }); %>'+
@@ -185,7 +184,7 @@
           '<ol>'+
             '<% _.forEach(craftItems, function(item) { %>'+
               '<li>'+
-                '<a href="http://www.gw2tp.com/item/<%- item.id %>"><%- item.name %></a> x <%- item.count %> '+
+                '<a href="http://www.gw2tp.com/item/<%- item.id %>" target="_blank"><%- item.name %></a> x <%- item.count %> '+
               '</li>'+
             '<% }); %>'+
           '</ol>'+
@@ -193,14 +192,17 @@
       '</li>'
     );
 
-    $.getJSON('http://localhost:3000/profits.json').then(function (data) {
+    $.ajax({
+      dataType: 'json',
+      url: 'http://localhost:3000/profits.json',
+      cache: false,
+      crossDomain: true
+    }).done(function (data) {
       var html = '';
       _.forEach(data.recipes, function (recipe) {
         var buyItems = [];
         var craftItems = [];
-
         process(recipe, 1, buyItems, craftItems);
-
         html += recipeTpl({
           id: recipe.output_item_id,
           iconSignature: recipe.output_item.icon_file_signature,

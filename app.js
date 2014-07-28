@@ -18,9 +18,29 @@ var LISTING_FEE = 0.95;
 var SALES_TAX = 0.9;
 
 /**
+ * Retrieve all indexed recipes.
+ */
+getRecipes = function () {
+  var deferred = q.defer();
+  client.search({
+    index: 'gw2',
+    type: 'recipe',
+    size: 9000
+  }).then(function (results) {
+    _.forEach(results.hits.hits, function (hit) {
+      recipes[hit._id] = hit._source;
+    });
+    client.close();
+    deferred.resolve();
+  });
+  return deferred.promise;
+};
+
+/**
  * Retrieve all pricing data from gw2tp.com.
  */
 getPrices = function (callback) {
+  prices = {};
   callback = callback || _.noop();
   request({
       url: 'http://api.gw2tp.com/1/bulk/items.json',
@@ -32,23 +52,6 @@ getPrices = function (callback) {
     });
     callback();
   });
-};
-
-/**
- * Retrieve all indexed recipes.
- */
-getRecipes = function () {
-  var deferred = q.defer();
-  client.search({
-    index: 'gw2',
-    type: 'recipe',
-    size: 9000
-  }).then(function (results) {
-    _.forEach(results.hits.hits, function (hit) { recipes[hit._id] = hit._source; });
-    client.close();
-    deferred.resolve();
-  });
-  return deferred.promise;
 };
 
 /**
@@ -74,7 +77,7 @@ traverseRecipe = function (recipe) {
       if (ingredient.recipe_id && recipes[ingredient.recipe_id]) {
         var ingredientRecipe = recipes[ingredient.recipe_id];
         traverseRecipe(ingredientRecipe);
-        if (ingredientRecipe.noSellPrice) { recipe.noSellPrice = true; return; }
+        if (ingredientRecipe.noSellPrice)     { recipe.noSellPrice = true; return; }
         if (ingredientRecipe.hasAccountBound) { recipe.hasAccountBound = true; }
         if (ingredientRecipe.learnedFromItem) { recipe.learnedFromItem = true; }
         ingredient.recipe = ingredientRecipe;
@@ -155,7 +158,6 @@ checkProfitable = function (recipe) {
 app.all('*', function (req, res, next) {
   res.header('Access-Control-Allow-Origin', '*');
   res.header('Access-Control-Allow-Headers', 'X-Requested-With');
-  res.header('Cache-Control', 'no-cache');
   next();
  });
 
