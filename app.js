@@ -1,4 +1,3 @@
-var q = require('q');
 var _ = require('lodash');
 var request = require('request');
 var elasticsearch = require('elasticsearch');
@@ -20,8 +19,8 @@ var SALES_TAX = 0.9;
 /**
  * Retrieve all indexed recipes.
  */
-getRecipes = function () {
-  var deferred = q.defer();
+getRecipes = function (callback) {
+  callback = callback || _.noop();
   client.search({
     index: 'gw2',
     type: 'recipe',
@@ -30,10 +29,8 @@ getRecipes = function () {
     _.forEach(results.hits.hits, function (hit) {
       recipes[hit._id] = hit._source;
     });
-    client.close();
-    deferred.resolve();
+    callback();
   });
-  return deferred.promise;
 };
 
 /**
@@ -161,44 +158,42 @@ app.all('*', function (req, res, next) {
   next();
  });
 
-// Get all indexed recipes
-getRecipes()
-
-  // Start the express server
-  .then(function () {
-    var server = app.listen(3000, function () {
-      console.log('Listening on port %d', server.address().port);
-    });
-  }).done();
-
-//=========================================================================//
-
 app.get('/profits.json', function (req, res) {
 
-  // Get pricing data
-  getPrices(function () {
-    var profitable = [];
+  // Get recipes from elasticsearch
+  getRecipes(function () {
 
-    // Loop through recipes
-    _.forEach(recipes, function (recipe) {
-      try {
-        // Traverse the top–level recipe
-        traverseRecipe(recipe);
+    // Get pricing data
+    getPrices(function () {
+      var profitable = [];
 
-        // Check to see if the recipe is profitable
-        if (checkProfitable(recipe)) { profitable.push(recipe); }
-      }
-      catch (e) {
-        console.error(e);
-      }
+      // Loop through recipes
+      _.forEach(recipes, function (recipe) {
+        try {
+          // Traverse the top–level recipe
+          traverseRecipe(recipe);
+
+          // Check to see if the recipe is profitable
+          if (checkProfitable(recipe)) { profitable.push(recipe); }
+        }
+        catch (e) {
+          console.error(e);
+        }
+      });
+
+      // Output profitable recipes as JSON
+      profitable = _.sortBy(profitable, function (recipe) {
+        return recipe.output_item.spread;
+      }).reverse();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.write(JSON.stringify({ recipes: profitable }));
+      res.end();
     });
-
-    // Output profitable recipes as JSON
-    profitable = _.sortBy(profitable, function (recipe) { return recipe.output_item.spread; }).reverse();
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.write(JSON.stringify({ recipes: profitable }));
-    res.end();
   });
+});
+
+var server = app.listen(3000, function () {
+  console.log('Listening on port %d', server.address().port);
 });
 
 //=========================================================================//
